@@ -1,7 +1,11 @@
 [package]
-name = "fractic-env-config""
+name = "fractic-env-config"
 version = "0.1.0"
 authors = ["Mart van Buren <mart@fractic.io>"]
 edition = "2021"
 
 [dependencies]
+fractic-generic-server-error = { path = "../rust-generic-server-error" }
+
+[dev-dependencies]
+once_cell = "1.18.0"
