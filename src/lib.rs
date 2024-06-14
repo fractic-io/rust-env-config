@@ -157,20 +157,18 @@ mod tests {
     define_env_variable!(COGNITO_REGION);
     define_env_variable!(COGNITO_USER_POOL_ID);
     define_env_variable!(DYNAMO_REGION);
-    define_env_variable!(DYNAMO_JOURNEYDB);
     define_env_variable!(POLLY_REGION);
 
     define_env_config!(
-        TestAllVariablesConfig,
+        AllVariablesConfig,
         CognitoRegion => COGNITO_REGION,
         CognitoUserPoolId => COGNITO_USER_POOL_ID,
         DynamoRegion => DYNAMO_REGION,
-        DynamoJourneyDB => DYNAMO_JOURNEYDB,
         PollyRegion => POLLY_REGION,
     );
 
     define_env_config!(
-        TestOneVariableConfig,
+        CognitoRegionOnlyConfig,
         CognitoRegion => COGNITO_REGION,
     );
 
@@ -179,15 +177,9 @@ mod tests {
     #[test]
     fn test_env_variable_as_str() {
         // Just test a couple.
-        assert_eq!(
-            TestAllVariablesConfig::CognitoRegion.as_str(),
-            "COGNITO_REGION"
-        );
-        assert_eq!(
-            TestAllVariablesConfig::DynamoRegion.as_str(),
-            "DYNAMO_REGION"
-        );
-        assert_eq!(TestAllVariablesConfig::PollyRegion.as_str(), "POLLY_REGION");
+        assert_eq!(AllVariablesConfig::CognitoRegion.as_str(), "COGNITO_REGION");
+        assert_eq!(AllVariablesConfig::DynamoRegion.as_str(), "DYNAMO_REGION");
+        assert_eq!(AllVariablesConfig::PollyRegion.as_str(), "POLLY_REGION");
     }
 
     #[test]
@@ -200,7 +192,7 @@ mod tests {
 
         let expected_config: HashMap<&'static str, String> =
             [(COGNITO_REGION, String::from("us-west-2"))].into();
-        let EnvVariables(config, PhantomData) = load_env::<TestOneVariableConfig>().unwrap();
+        let EnvVariables(config, PhantomData) = load_env::<CognitoRegionOnlyConfig>().unwrap();
         assert_eq!(config, expected_config);
     }
 
@@ -212,7 +204,7 @@ mod tests {
         env::remove_var("DYNAMO_REGION");
         env::remove_var("POLLY_REGION");
 
-        let config = load_env::<TestAllVariablesConfig>();
+        let config = load_env::<AllVariablesConfig>();
         assert!(config.is_err());
     }
 
@@ -221,7 +213,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         env::remove_var("COGNITO_REGION");
 
-        let config = load_env::<TestOneVariableConfig>();
+        let config = load_env::<CognitoRegionOnlyConfig>();
         assert!(config.is_err());
     }
 
@@ -229,5 +221,89 @@ mod tests {
     fn test_load_config_empty() {
         let EnvVariables(config, PhantomData) = load_env::<EmptyConfig>().unwrap();
         assert_eq!(config, HashMap::new());
+    }
+
+    #[test]
+    fn test_env_variables_window() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        env::set_var("COGNITO_REGION", "us-west-2");
+        env::set_var("COGNITO_USER_POOL_ID", "us-west-2_pool");
+        env::set_var("DYNAMO_REGION", "us-west-2");
+        env::set_var("POLLY_REGION", "us-west-2");
+
+        let parent_config: EnvVariables<AllVariablesConfig> =
+            load_env::<AllVariablesConfig>().unwrap();
+
+        define_env_config!(
+            TestWindowConfig,
+            CognitoRegion => COGNITO_REGION,
+            PollyRegion => POLLY_REGION,
+        );
+
+        let window_config: EnvVariablesWindow<TestWindowConfig> =
+            build_env_window(&parent_config).unwrap();
+
+        assert_eq!(
+            window_config.get(&TestWindowConfig::CognitoRegion).unwrap(),
+            "us-west-2"
+        );
+        assert_eq!(
+            window_config.get(&TestWindowConfig::PollyRegion).unwrap(),
+            "us-west-2"
+        );
+    }
+
+    #[test]
+    fn test_env_variables_window_invalid() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        env::set_var("COGNITO_REGION", "us-west-2");
+
+        let parent_config: EnvVariables<CognitoRegionOnlyConfig> =
+            load_env::<CognitoRegionOnlyConfig>().unwrap();
+
+        define_env_config!(
+            TestInvalidWindowConfig,
+            CognitoRegion => COGNITO_REGION,
+            PollyRegion => POLLY_REGION,
+        );
+
+        let window_config =
+            build_env_window::<CognitoRegionOnlyConfig, TestInvalidWindowConfig>(&parent_config);
+
+        assert!(window_config.is_err());
+    }
+
+    #[test]
+    fn test_env_variables_from_hashmap() {
+        let input_map: HashMap<&'static str, String> = [
+            (COGNITO_REGION, String::from("us-west-2")),
+            (DYNAMO_REGION, String::from("us-west-2")),
+        ]
+        .into();
+
+        let env_variables: EnvVariables<AllVariablesConfig> = EnvVariables::from(input_map);
+
+        assert_eq!(
+            env_variables
+                .get(&AllVariablesConfig::CognitoRegion)
+                .unwrap(),
+            "us-west-2"
+        );
+        assert_eq!(
+            env_variables
+                .get(&AllVariablesConfig::DynamoRegion)
+                .unwrap(),
+            "us-west-2"
+        );
+    }
+
+    #[test]
+    fn test_env_variables_get_invalid_key() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let input_map: HashMap<&'static str, String> =
+            [(COGNITO_REGION, String::from("us-west-2"))].into();
+        let env_variables: EnvVariables<AllVariablesConfig> = EnvVariables::from(input_map);
+        let result = env_variables.get(&AllVariablesConfig::PollyRegion);
+        assert!(result.is_err());
     }
 }
