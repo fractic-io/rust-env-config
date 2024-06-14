@@ -44,6 +44,7 @@ pub trait EnvConfigEnum: std::fmt::Debug + PartialEq + Eq + core::hash::Hash + C
 // This object is now guaranteed to have all the values for each enum value of
 // EnvConfig, and it is compiler-ensured that you don't accidentally try to
 // access any variables that were not specified in the config.
+#[derive(Debug)]
 pub struct EnvVariables<T: EnvConfigEnum>(HashMap<&'static str, String>, PhantomData<T>);
 impl<T: EnvConfigEnum> EnvVariables<T> {
     pub fn get(&self, key: &T) -> Result<&String, GenericServerError> {
