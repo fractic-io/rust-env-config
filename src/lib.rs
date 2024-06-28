@@ -88,47 +88,17 @@ where
     }
 }
 
-// Libraries and functions can use a subset of the env variables by using a
-// "window", which does not take ownership but only takes references to the
-// required variables.
-//
-// let window: EnvVariablesWindow<EnvConfigWindow> = build_env_window(&config)?;
-//
-// Again, this now statically insures that all the variables specified in the
-// window's config are available, and that the child code / library does not
-// accidentally access any variables outside of that.
-pub struct EnvVariablesWindow<'env_variables_life, T: EnvConfigEnum>(
-    HashMap<&'static str, &'env_variables_life String>,
-    PhantomData<T>,
-);
-impl<T: EnvConfigEnum> EnvVariablesWindow<'_, T> {
-    pub fn get(&self, key: &T) -> Result<&String, GenericServerError> {
-        self.get_raw(key.as_str())
-    }
-    fn get_raw(&self, key: &str) -> Result<&String, GenericServerError> {
-        let dbg_cxt: &'static str = "EnvVariables.get_raw";
-        Ok(*(self.0.get(key).ok_or(CriticalError::with_debug(
-            dbg_cxt,
-            "Should be guaranteed any ENV variable EnvConfig::key is present in
-            EnvVariablesWindow<EnvConfig>, but it wasn't.",
-            key.into(),
-        ))?))
-    }
-}
-pub fn build_env_window<
-    'env_variables_life,
-    ParentConfig: EnvConfigEnum,
-    WindowConfig: EnvConfigEnum,
->(
-    parent: &'env_variables_life EnvVariables<ParentConfig>,
-) -> Result<EnvVariablesWindow<'env_variables_life, WindowConfig>, GenericServerError> {
-    let dbg_cxt: &'static str = "build_env_window";
-    let mut map = HashMap::new();
-    for value in WindowConfig::value_list() {
-        let key_as_str = value.as_str();
-        map.insert(
-            key_as_str,
-            parent.get_raw(key_as_str).map_err(|_critical_error| {
+// An EnvVariables object can be cloned into a smaller EnvVariables as long as
+// the child is a proper subset of the parent.
+impl<ParentConfig: EnvConfigEnum> EnvVariables<ParentConfig> {
+    pub fn clone_into<ChildConfig: EnvConfigEnum>(
+        &self,
+    ) -> Result<EnvVariables<ChildConfig>, GenericServerError> {
+        let dbg_cxt: &'static str = "EnvVariables::clone_into";
+        let mut map = HashMap::new();
+        for value in ChildConfig::value_list() {
+            let key_as_str = value.as_str();
+            let env_value = self.get_raw(key_as_str).map_err(|_critical_error| {
                 // Usually get_raw would return a critical error because the key
                 // should always exist. However, when building a window, it
                 // could be missing if the window config is not a proper subset
@@ -136,10 +106,11 @@ pub fn build_env_window<
                 // know the the parent EnvConfig needs to be updated by
                 // returning an InvalidEnvConfig error.
                 InvalidEnvConfig::with_debug(dbg_cxt, "ENV variable missing", key_as_str.into())
-            })?,
-        );
+            })?;
+            map.insert(key_as_str, env_value.clone());
+        }
+        Ok(EnvVariables(map, PhantomData))
     }
-    Ok(EnvVariablesWindow(map, PhantomData))
 }
 
 // Tests.
@@ -225,53 +196,47 @@ mod tests {
     }
 
     #[test]
-    fn test_env_variables_window() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        env::set_var("COGNITO_REGION", "us-west-2");
-        env::set_var("COGNITO_USER_POOL_ID", "us-west-2_pool");
-        env::set_var("DYNAMO_REGION", "us-west-2");
-        env::set_var("POLLY_REGION", "us-west-2");
+    fn test_subset_valid() {
+        let input_map: HashMap<&'static str, String> = [
+            (COGNITO_REGION, String::from("us-west-2")),
+            (COGNITO_USER_POOL_ID, String::from("pool-id")),
+            (DYNAMO_REGION, String::from("us-west-2")),
+            (POLLY_REGION, String::from("us-east-1")),
+        ]
+        .into();
 
-        let parent_config: EnvVariables<AllVariablesConfig> =
-            load_env::<AllVariablesConfig>().unwrap();
-
-        define_env_config!(
-            TestWindowConfig,
-            CognitoRegion => COGNITO_REGION,
-            PollyRegion => POLLY_REGION,
-        );
-
-        let window_config: EnvVariablesWindow<TestWindowConfig> =
-            build_env_window(&parent_config).unwrap();
+        let env_variables: EnvVariables<AllVariablesConfig> = EnvVariables::from(input_map);
+        let subset: EnvVariables<CognitoRegionOnlyConfig> = env_variables.clone_into().unwrap();
 
         assert_eq!(
-            window_config.get(&TestWindowConfig::CognitoRegion).unwrap(),
-            "us-west-2"
-        );
-        assert_eq!(
-            window_config.get(&TestWindowConfig::PollyRegion).unwrap(),
+            subset.get(&CognitoRegionOnlyConfig::CognitoRegion).unwrap(),
             "us-west-2"
         );
     }
 
     #[test]
-    fn test_env_variables_window_invalid() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        env::set_var("COGNITO_REGION", "us-west-2");
+    fn test_subset_invalid() {
+        let input_map: HashMap<&'static str, String> = [
+            (COGNITO_USER_POOL_ID, String::from("pool-id")),
+            (DYNAMO_REGION, String::from("us-west-2")),
+        ]
+        .into();
 
-        let parent_config: EnvVariables<CognitoRegionOnlyConfig> =
-            load_env::<CognitoRegionOnlyConfig>().unwrap();
+        let env_variables: EnvVariables<AllVariablesConfig> = EnvVariables::from(input_map);
+        let subset_result = env_variables.clone_into::<CognitoRegionOnlyConfig>();
 
-        define_env_config!(
-            TestInvalidWindowConfig,
-            CognitoRegion => COGNITO_REGION,
-            PollyRegion => POLLY_REGION,
-        );
+        assert!(subset_result.is_err());
+    }
 
-        let window_config =
-            build_env_window::<CognitoRegionOnlyConfig, TestInvalidWindowConfig>(&parent_config);
+    #[test]
+    fn test_subset_empty() {
+        let input_map: HashMap<&'static str, String> =
+            [(COGNITO_REGION, String::from("us-west-2"))].into();
 
-        assert!(window_config.is_err());
+        let env_variables: EnvVariables<AllVariablesConfig> = EnvVariables::from(input_map);
+        let subset: EnvVariables<EmptyConfig> = env_variables.clone_into().unwrap();
+
+        assert_eq!(subset.0, HashMap::new());
     }
 
     #[test]
