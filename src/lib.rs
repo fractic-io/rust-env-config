@@ -28,7 +28,9 @@ use fractic_generic_server_error::{common::CriticalError, GenericServerError};
 //
 // Now the EnvConfig object can be used to fetch and manage the environment
 // variable values in a way that's largely type-checked by the compiler.
-pub trait EnvConfigEnum: std::fmt::Debug + PartialEq + Eq + core::hash::Hash + Clone {
+pub trait EnvConfigEnum:
+    std::fmt::Debug + PartialEq + Eq + core::hash::Hash + Clone + Send + Sync
+{
     fn as_str(&self) -> &'static str;
     fn value_list() -> Vec<Self>;
 }
