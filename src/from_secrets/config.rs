@@ -5,14 +5,11 @@ use fractic_generic_server_error::GenericServerError;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use crate::{define_env_config, define_env_variable, EnvConfigEnum, EnvVariables};
+use crate::{define_env_config, EnvConfigEnum, EnvVariables, SECRETS_ID, SECRETS_REGION};
 
 use super::errors::{
     FailedToFetchSecretsJson, InvalidSecretsConfig, MissingSecretKey, SecretsInvalidJson,
 };
-
-define_env_variable!(SECRETS_REGION);
-define_env_variable!(SECRETS_ID);
 
 define_env_config!(
     SecretsEnvConfig,
