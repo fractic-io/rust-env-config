@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use fractic_generic_server_error::{common::CriticalError, GenericServerError};
+use fractic_server_error::{common::CriticalError, GenericServerError};
 
 use super::{InvalidEnvConfig, MissingEnvVariableError};
 

@@ -1,7 +1,7 @@
 use aws_config::BehaviorVersion;
 use aws_sdk_secretsmanager::{config::Region, Client};
-use fractic_generic_server_error::common::CriticalError;
-use fractic_generic_server_error::GenericServerError;
+use fractic_server_error::common::CriticalError;
+use fractic_server_error::GenericServerError;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
