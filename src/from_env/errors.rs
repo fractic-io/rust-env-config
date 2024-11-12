@@ -1,11 +1,12 @@
-use fractic_server_error::{
-    define_internal_error_type, GenericServerError, GenericServerErrorTrait,
-};
+use fractic_server_error::define_internal_error;
 
-define_internal_error_type!(
-    InvalidEnvConfig,
-    "Env variables needed by the window config are not present in the parent
-    EnvConfig. Please update the parent config to include the required
-    variable."
+define_internal_error!(
+    InvalidEnvCloneInto,
+    "Invalid clone_into(...). Parent config missing key '{missing_var}'.",
+    { missing_var: &str }
 );
-define_internal_error_type!(MissingEnvVariableError, "Missing environment variable.");
+define_internal_error!(
+    MissingEnvVariableError,
+    "Missing environment variable '{missing_var}'.",
+    { missing_var: &str }
+);

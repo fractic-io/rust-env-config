@@ -1,15 +1,22 @@
-use fractic_server_error::{
-    define_internal_error_type, GenericServerError, GenericServerErrorTrait,
-};
+use fractic_server_error::define_internal_error;
 
-define_internal_error_type!(
+define_internal_error!(
     FailedToFetchSecretsJson,
-    "Failed to fetch secrets from Amazon Secrets Manager."
+    "Failed to fetch secret '{secret_id}' (region '{region}') from Amazon Secrets Manager.",
+    { secret_id: &str, region: &str }
 );
-define_internal_error_type!(MissingSecretKey, "Missing key in secrets.");
-define_internal_error_type!(SecretsInvalidJson, "Secrets value is not valid JSON.");
-define_internal_error_type!(
-    InvalidSecretsConfig,
-    "Secret keys needed by the window config are not present in the parent
-    SecretsConfig. Please update the parent config to include the required key."
+define_internal_error!(
+    MissingSecretKey,
+    "Secret '{secret_id}' (region '{region}') missing key '{missing_key}'.",
+    { secret_id: &str, region: &str, missing_key: &str }
+);
+define_internal_error!(
+    SecretsInvalidJson,
+    "Secret '{secret_id}' (region '{region}')'s value is not valid JSON.",
+    { secret_id: &str, region: &str }
+);
+define_internal_error!(
+    InvalidSecretsCloneInto,
+    "Invalid clone_into(...). Parent config missing secret '{missing_secret}'.",
+    { missing_secret: &str }
 );

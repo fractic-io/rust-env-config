@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use fractic_server_error::{common::CriticalError, GenericServerError};
+use fractic_server_error::{CriticalError, ServerError};
 
-use super::{InvalidEnvConfig, MissingEnvVariableError};
+use super::{InvalidEnvCloneInto, MissingEnvVariableError};
 
 // Environment configuration.
 // --------------------------------------------------
@@ -46,26 +46,21 @@ pub trait EnvConfigEnum:
 #[derive(Debug, Clone)]
 pub struct EnvVariables<T: EnvConfigEnum>(HashMap<&'static str, String>, PhantomData<T>);
 impl<T: EnvConfigEnum> EnvVariables<T> {
-    pub fn get(&self, key: &T) -> Result<&String, GenericServerError> {
+    pub fn get(&self, key: &T) -> Result<&String, ServerError> {
         self.get_raw(key.as_str())
     }
-    fn get_raw(&self, key: &str) -> Result<&String, GenericServerError> {
-        let dbg_cxt: &'static str = "EnvVariables.get_raw";
-        self.0.get(key).ok_or(CriticalError::with_debug(
-            dbg_cxt,
-            "Should be guaranteed any ENV variable EnvConfig::key is present in
-            EnvVariables<EnvConfig>, but it wasn't.",
-            key.into(),
+    fn get_raw(&self, key: &str) -> Result<&String, ServerError> {
+        self.0.get(key).ok_or(CriticalError::new(
+            &format!("Should be guaranteed any ENV variable EnvConfig::key is present in EnvVariables<EnvConfig>, but EnvConfig::{key} is missing."),
         ))
     }
 }
-pub fn load_env<T: EnvConfigEnum>() -> Result<EnvVariables<T>, GenericServerError> {
-    let dbg_cxt: &'static str = "load_config";
+pub fn load_env<T: EnvConfigEnum>() -> Result<EnvVariables<T>, ServerError> {
     let mut map = HashMap::new();
 
     for field in T::value_list() {
         let value = std::env::var(field.as_str())
-            .map_err(|_| MissingEnvVariableError::with_debug(dbg_cxt, "", field.as_str().into()))?;
+            .map_err(|_| MissingEnvVariableError::new(field.as_str()))?;
         map.insert(field.as_str(), value);
     }
 
@@ -92,8 +87,7 @@ where
 impl<ParentConfig: EnvConfigEnum> EnvVariables<ParentConfig> {
     pub fn clone_into<ChildConfig: EnvConfigEnum>(
         &self,
-    ) -> Result<EnvVariables<ChildConfig>, GenericServerError> {
-        let dbg_cxt: &'static str = "EnvVariables::clone_into";
+    ) -> Result<EnvVariables<ChildConfig>, ServerError> {
         let mut map = HashMap::new();
         for value in ChildConfig::value_list() {
             let key_as_str = value.as_str();
@@ -104,7 +98,7 @@ impl<ParentConfig: EnvConfigEnum> EnvVariables<ParentConfig> {
                 // of the parent config. In this case, just let the developer
                 // know the the parent EnvConfig needs to be updated by
                 // returning an InvalidEnvConfig error.
-                InvalidEnvConfig::with_debug(dbg_cxt, "ENV variable missing", key_as_str.into())
+                InvalidEnvCloneInto::new(key_as_str)
             })?;
             map.insert(key_as_str, env_value.clone());
         }
